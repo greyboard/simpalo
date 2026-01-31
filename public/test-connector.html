@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Simpalo Connector Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #1A365D;
+      margin-bottom: 10px;
+    }
+    .info {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #333;
+    }
+    input[type="text"],
+    input[type="email"],
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    textarea {
+      min-height: 100px;
+      resize: vertical;
+    }
+    button {
+      background-color: #1A365D;
+      color: white;
+      padding: 12px 24px;
+      border: none;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+      width: 100%;
+    }
+    button:hover {
+      background-color: #2A4365;
+    }
+    .utm-info {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f9f9f9;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #666;
+    }
+    .utm-info strong {
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Kontaktformular Test</h1>
+    
+    <div class="info">
+      <strong>ℹ️ Test-Seite für Simpalo Connector</strong><br>
+      Diese Seite testet den Simpalo Connector. Öffne die Browser-Konsole (F12), um die Logs zu sehen.
+      <br><br>
+      <strong>Test mit UTM-Parametern:</strong><br>
+      Füge folgende Parameter zur URL hinzu, um UTM-Tracking zu testen:<br>
+      <code>?utm_source=google&utm_medium=cpc&utm_campaign=test</code>
+    </div>
+
+    <form id="contactForm" action="/thank-you.html" method="POST">
+      <div class="form-group">
+        <label for="name">Name *</label>
+        <input type="text" id="name" name="name" required placeholder="Max Mustermann">
+      </div>
+
+      <div class="form-group">
+        <label for="email">E-Mail *</label>
+        <input type="email" id="email" name="email" required placeholder="max@example.de">
+      </div>
+
+      <div class="form-group">
+        <label for="phone">Telefon (optional)</label>
+        <input type="text" id="phone" name="phone" placeholder="+49 123 456789">
+      </div>
+
+      <div class="form-group">
+        <label for="message">Nachricht *</label>
+        <textarea id="message" name="message" required placeholder="Ihre Nachricht..."></textarea>
+      </div>
+
+      <button type="submit">Absenden</button>
+    </form>
+
+    <div class="utm-info" id="utmInfo">
+      <strong>Gespeicherte UTM-Parameter:</strong><br>
+      <span id="utmDisplay">Lädt...</span>
+    </div>
+  </div>
+
+  <!-- Simpalo Connector Script -->
+  <!-- 
+    WICHTIG: Ersetze YOUR_WEBHOOK_ID mit einer echten Webhook-ID aus deinem Account
+    Du findest die Webhook-ID in: Dashboard → Einstellungen → Webhooks
+    
+    Die Webhook-URL wird automatisch generiert basierend auf der Domain.
+  -->
+  <script src="/connector.js" data-webhook-id="YOUR_WEBHOOK_ID"></script>
+
+  <script>
+    // Zeige gespeicherte UTM-Parameter an
+    function displayUtmParams() {
+      const utmKeys = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'];
+      const utmParams = {};
+      
+      utmKeys.forEach(key => {
+        const value = localStorage.getItem('smp_' + key);
+        if (value) {
+          utmParams[key] = value;
+        }
+      });
+
+      const display = document.getElementById('utmDisplay');
+      if (Object.keys(utmParams).length > 0) {
+        display.innerHTML = Object.entries(utmParams)
+          .map(([key, value]) => `<strong>${key}:</strong> ${value}`)
+          .join('<br>');
+      } else {
+        display.textContent = 'Keine UTM-Parameter gespeichert. Füge UTM-Parameter zur URL hinzu.';
+      }
+    }
+
+    // Aktualisiere Anzeige beim Laden und nach LocalStorage-Änderungen
+    displayUtmParams();
+    window.addEventListener('storage', displayUtmParams);
+    
+    // Prüfe auch URL-Parameter beim Laden
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('utm_source') || urlParams.has('utm_medium') || urlParams.has('utm_campaign')) {
+      setTimeout(displayUtmParams, 500); // Warte kurz, damit Connector Zeit hat zu speichern
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,599 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// AUTHENTICATION & MULTI-TENANCY MODELS
+// ============================================
+
+model Account {
+  id                String   @id @default(cuid())
+  name              String   // Firmenname
+  slug              String   @unique // URL-freundlicher Name (z.B. "firma-xyz")
+  email             String?  // Primär-E-Mail der Firma
+  phone             String?
+  address           String?
+  city              String?
+  state             String?
+  zipCode           String?
+  country           String   @default("DE")
+  website           String?
+  isActive          Boolean  @default(false) // Account-Freischaltung durch Superadmin
+  
+  // Relations
+  users             User[]
+  settings          AccountSettings?
+  leads             Lead[]
+  tags              Tag[]
+  notes             Note[]
+  tasks             Task[]
+  campaigns         Campaign[]
+  templates         Template[]
+  crmIntegrations   CrmIntegration[]
+  webhooks          Webhook[]
+  securityEvents    SecurityEvent[] // Security Events für diesen Account
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([slug])
+  @@index([email])
+  @@index([isActive])
+}
+
+model User {
+  id                String   @id @default(cuid())
+  accountId         String
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // NextAuth fields
+  name              String?
+  email             String   @unique
+  emailVerified     DateTime?
+  password          String?  // Hashed password for credentials provider
+  image             String?
+  
+  // User role and status
+  role              UserRole @default(USER)
+  isActive          Boolean  @default(true)
+  
+  // Relations
+  accounts          NextAuthAccount[]
+  sessions          NextAuthSession[]
+  settings          UserSettings?
+  notes             Note[]   // Notes created by this user
+  securityEvents    SecurityEvent[] // Security Events, die von diesem User ausgelöst wurden
+  notifications     Notification[] // Benachrichtigungen für diesen User
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([accountId])
+  @@index([email])
+}
+
+model SecurityEvent {
+  id                String   @id @default(cuid())
+  userId            String?  // User, der die Aktion ausgeführt hat
+  user              User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  accountId         String   // Account, in dem die Aktion stattfand
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  eventType         SecurityEventType
+  entityType        String?  // z.B. "Lead", "User", "Account", "Webhook"
+  entityId          String?  // ID der betroffenen Entität
+  description       String   // Beschreibung der Aktion
+  metadata          Json?    // Zusätzliche Daten (z.B. alte/neue Werte)
+  ipAddress         String?  // IP-Adresse des Clients
+  userAgent         String?  // User-Agent des Browsers
+  
+  createdAt         DateTime @default(now())
+  
+  @@index([userId])
+  @@index([accountId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}
+
+enum SecurityEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LEAD_DELETED
+  USER_DELETED
+  USER_ROLE_CHANGED
+  USER_ACTIVATED
+  USER_DEACTIVATED
+  PASSWORD_CHANGED
+  ACCOUNT_ACTIVATED
+  ACCOUNT_DEACTIVATED
+  ACCOUNT_DELETED
+  WEBHOOK_DELETED
+  NOTE_DELETED
+  COMMUNICATION_DELETED
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  OWNER
+  SUPERADMIN
+}
+
+model AccountSettings {
+  id                String   @id @default(cuid())
+  accountId         String   @unique
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // Settings als JSON für Flexibilität
+  settings          Json?    // Beispiel: { timezone: "Europe/Berlin", currency: "EUR", ... }
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model UserSettings {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Settings als JSON für Flexibilität
+  settings          Json?    // Beispiel: { theme: "light", notifications: true, ... }
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Notification {
+  id                String   @id @default(cuid())
+  userId            String   // User, der die Benachrichtigung erhalten soll
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title             String   // Titel der Benachrichtigung
+  message           String   @db.Text // Nachricht der Benachrichtigung
+  type              String   // Typ: "lead", "task", "campaign", "system", etc.
+  link              String?  // Optional: Link zur zugehörigen Seite (z.B. "/dashboard/leads/123")
+  isRead            Boolean  @default(false) // Gelesen-Status
+  
+  createdAt         DateTime @default(now())
+  readAt            DateTime? // Zeitpunkt, wann die Benachrichtigung als gelesen markiert wurde
+  
+  @@index([userId])
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+// NextAuth Models
+model NextAuthAccount {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model NextAuthSession {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model NextAuthVerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// LEAD & BUSINESS MODELS
+// ============================================
+
+model Company {
+  id                String   @id @default(cuid())
+  name              String
+  businessName      String?
+  address           String?
+  city              String?
+  state             String?
+  zipCode           String?
+  country           String   @default("DE")
+  phone             String?
+  website           String?
+  
+  // Google Business Profile Data
+  googlePlaceId     String   @unique // Required, but can be generated for manual entries
+  rating            Float?
+  reviewCount       Int?
+  hasBadReviews     Boolean  @default(false)
+  hasPoorProfile    Boolean  @default(false)
+  category          String?
+  businessHours     Json?
+  
+  // Social Media
+  facebookUrl       String?
+  instagramUrl      String?
+  linkedinUrl       String?
+  
+  // Relations
+  leads             Lead[]
+  reviews           Review[]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([googlePlaceId])
+  @@index([category])
+  @@index([city])
+  @@index([name])
+}
+
+model Lead {
+  id                String   @id @default(cuid())
+  name              String   // Kontaktname (z.B. "Max Mustermann") - Fallback wenn firstName/lastName nicht vorhanden
+  firstName         String?  // Vorname
+  lastName          String?  // Nachname
+  email             String?
+  phone             String?  // Kontakt-Telefon (kann vom Company abweichen)
+  
+  // Multi-tenancy: Lead gehört zu einem Account
+  accountId         String
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  
+  // Status & Workflow
+  status            LeadStatus @default(NEW)
+  priority          Priority   @default(MEDIUM)
+  type              LeadType   @default(CONTACT) // COMPANY = Unternehmen (Google Places), CONTACT = Kontakt (Webhooks)
+  source            String?
+  
+  // UTM Tracking Parameter
+  utmSource         String?  // UTM Source (z.B. "google", "facebook")
+  utmMedium         String?  // UTM Medium (z.B. "cpc", "email")
+  utmCampaign       String?  // UTM Campaign (z.B. "summer-sale")
+  utmTerm           String?  // UTM Term (z.B. "running shoes")
+  utmContent        String?  // UTM Content (z.B. "logolink")
+  
+  // CRM Integration
+  crmId             String?
+  crmType           CrmType?
+  crmUrl            String?
+  
+  // Relations
+  tags              LeadTag[]
+  notes             Note[]
+  tasks             Task[]
+  campaigns         CampaignLead[]
+  communications    Communication[]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([status])
+  @@index([accountId])
+  @@index([companyId])
+  @@index([source])
+  @@index([type])
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+  ARCHIVED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum LeadType {
+  COMPANY // Unternehmen (z.B. von Google Places)
+  CONTACT // Unternehmenskontakt (z.B. von Webhooks)
+}
+
+enum CrmType {
+  GOHIGHLEVEL
+  HUBSPOT
+  PIPEDRIVE
+  ZAPIER
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String
+  color     String   @default("#3B82F6")
+  
+  // Multi-tenancy: Tag gehört zu einem Account
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  leads     LeadTag[]
+  createdAt DateTime @default(now())
+  
+  @@unique([accountId, name])
+  @@index([accountId])
+}
+
+model LeadTag {
+  id        String   @id @default(cuid())
+  leadId    String
+  tagId     String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  
+  @@unique([leadId, tagId])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  content   String   @db.Text
+  
+  // Multi-tenancy: Note gehört zu einem Account
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // Author: User der die Note erstellt hat
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([leadId])
+  @@index([accountId])
+  @@index([authorId])
+}
+
+model Review {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  authorName  String
+  rating      Int
+  text        String?  @db.Text
+  reviewTime  DateTime // Zeitstempel aus Google Places API
+  createdAt   DateTime @default(now())
+  
+  @@index([companyId])
+  @@index([rating])
+}
+
+model Task {
+  id          String      @id @default(cuid())
+  leadId      String?
+  lead        Lead?       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title       String
+  description String?     @db.Text
+  status      TaskStatus  @default(PENDING)
+  priority    Priority    @default(MEDIUM)
+  dueDate     DateTime?
+  completedAt DateTime?
+  
+  // Multi-tenancy: Task gehört zu einem Account
+  accountId   String
+  account     Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@index([leadId])
+  @@index([accountId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Campaign {
+  id          String        @id @default(cuid())
+  name        String
+  description String?       @db.Text
+  type        CampaignType
+  status      CampaignStatus @default(DRAFT)
+  template    Json?
+  settings    Json?
+  
+  // Multi-tenancy: Campaign gehört zu einem Account
+  accountId   String
+  account     Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  leads       CampaignLead[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  @@index([accountId])
+}
+
+enum CampaignType {
+  EMAIL
+  SMS
+  SEQUENCE
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+model CampaignLead {
+  id         String   @id @default(cuid())
+  campaignId String
+  leadId     String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  lead       Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  status     String   @default("pending")
+  sentAt     DateTime?
+  openedAt   DateTime?
+  clickedAt  DateTime?
+  repliedAt  DateTime?
+  createdAt  DateTime @default(now())
+  
+  @@unique([campaignId, leadId])
+}
+
+model Communication {
+  id        String           @id @default(cuid())
+  leadId    String
+  lead      Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type      CommunicationType
+  direction Direction
+  subject   String?
+  content   String           @db.Text
+  status    String?          // Email status: sent, delivered, opened, clicked, bounced, failed, etc.
+  mailgunId String?          // Mailgun message ID for tracking
+  metadata  Json?            // Additional data: openedAt, clickedAt, deliveredAt, etc.
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  
+  @@index([leadId])
+  @@index([type])
+  @@index([status])
+  @@index([mailgunId])
+  @@index([createdAt])
+}
+
+enum CommunicationType {
+  EMAIL
+  SMS
+  CALL
+  NOTE
+}
+
+enum Direction {
+  INBOUND
+  OUTBOUND
+}
+
+model Template {
+  id        String      @id @default(cuid())
+  name      String
+  type      TemplateType
+  subject   String?
+  content   String      @db.Text
+  variables Json?
+  isDefault Boolean     @default(false)
+  
+  // Multi-tenancy: Template gehört zu einem Account
+  accountId String
+  account   Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  
+  @@index([accountId])
+}
+
+enum TemplateType {
+  EMAIL
+  SMS
+}
+
+model CrmIntegration {
+  id          String   @id @default(cuid())
+  type        CrmType
+  name        String
+  apiKey      String   @db.Text
+  apiUrl      String?
+  settings    Json?
+  isActive    Boolean  @default(true)
+  
+  // Multi-tenancy: CrmIntegration gehört zu einem Account
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@unique([accountId, type])
+  @@index([accountId])
+}
+
+model Webhook {
+  id          String   @id @default(cuid())
+  name        String
+  source      String   // Lead-Quelle (z.B. "Website Form", "Zapier", "Typeform", "GoHighLevel")
+  webhookId   String   @unique // Eindeutige ID für die Webhook-URL (ohne Secret)
+  secret      String?  @unique // Optional: Token/Secret für zusätzliche Authentifizierung
+  url         String?  // Optional: URL für eigene Webhooks
+  isActive    Boolean  @default(true)
+  settings    Json?    // Zusätzliche Konfiguration (z.B. Feld-Mapping)
+  
+  // Multi-tenancy: Webhook gehört zu einem Account
+  accountId   String
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  logs        WebhookLog[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([source])
+  @@index([accountId])
+  @@index([webhookId])
+  @@index([secret])
+  @@index([isActive])
+}
+
+model WebhookLog {
+  id          String   @id @default(cuid())
+  webhookId   String
+  webhook     Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  
+  payload     Json     // Der empfangene JSON-Payload
+  success     Boolean  @default(true)
+  error       String?  @db.Text
+  leadId      String?  // ID des erstellten Leads (falls erfolgreich)
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([webhookId])
+  @@index([createdAt])
+  @@index([success])
+}
+
