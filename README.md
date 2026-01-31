@@ -2,6 +2,16 @@
 
 Open-Source Lead-Generierungs- und CRM-Webapp für lokale Unternehmen. Leads verwalten, Kampagnen tracken, Webhooks und den Simpalo Connector für Kundenwebseiten nutzen.
 
+## 🧪 Demoversion
+
+Zum Ausprobieren ohne eigene Installation:
+
+| | |
+|---|---|
+| **URL** | [https://demo.simpalo.de/](https://demo.simpalo.de/) |
+| **Benutzer** | `demo@simpalo.de` |
+| **Passwort** | `Start12345&DEMO` |
+
 ## Features
 
 - **Dashboard** – KPIs, Kontakte, Aufgaben
